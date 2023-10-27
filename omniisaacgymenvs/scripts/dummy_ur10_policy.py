@@ -27,24 +27,48 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-def initialize_demo(config, env, init_sim=True):
-    from omniisaacgymenvs.demos.anymal_terrain import AnymalTerrainDemo
-    from omniisaacgymenvs.demos.ur10_reacher import UR10ReacherDemo
+import numpy as np
+import torch
+import hydra
+from omegaconf import DictConfig
 
-    # Mappings from strings to environments
-    task_map = {
-        "AnymalTerrain": AnymalTerrainDemo,
-        "UR10Reacher": UR10ReacherDemo,
-    }
+from omniisaacgymenvs.utils.hydra_cfg.hydra_utils import *
+from omniisaacgymenvs.utils.hydra_cfg.reformat import omegaconf_to_dict, print_dict
 
-    from omniisaacgymenvs.utils.config_utils.sim_config import SimConfig
-    sim_config = SimConfig(config)
+from omniisaacgymenvs.utils.task_util import initialize_task
+from omniisaacgymenvs.envs.vec_env_rlgames import VecEnvRLGames
 
-    cfg = sim_config.config
-    task = task_map[cfg["task_name"]](
-        name=cfg["task_name"], sim_config=sim_config, env=env
-    )
+@hydra.main(config_name="config", config_path="../cfg")
+def parse_hydra_configs(cfg: DictConfig):
 
-    env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=init_sim)
+    cfg_dict = omegaconf_to_dict(cfg)
+    print_dict(cfg_dict)
 
-    return task
+    headless = cfg.headless
+    render = not headless
+
+    env = VecEnvRLGames(headless=headless)
+    task = initialize_task(cfg_dict, env)
+
+    while env._simulation_app.is_running():
+        if env._world.is_playing():
+            if env._world.current_time_step_index == 0:
+                env._world.reset(soft=True)
+            actions = torch.tensor(np.array([env.action_space.sample() for _ in range(env.num_envs)]), device=task.rl_device)
+            actions[:, 0] = 0.0
+            actions[:, 1] = 0.0
+            actions[:, 2] = 0.0
+            actions[:, 3] = 0.0
+            actions[:, 4] = 0.0
+            actions[:, 5] = 0.0
+            env._task.pre_physics_step(actions)
+            env._world.step(render=render)
+            env.sim_frame_count += 1
+            env._task.post_physics_step()
+        else:
+            env._world.step(render=render)
+
+    env._simulation_app.close()
+
+if __name__ == '__main__':
+    parse_hydra_configs()

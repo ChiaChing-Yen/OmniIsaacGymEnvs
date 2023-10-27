@@ -27,24 +27,28 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-def initialize_demo(config, env, init_sim=True):
-    from omniisaacgymenvs.demos.anymal_terrain import AnymalTerrainDemo
-    from omniisaacgymenvs.demos.ur10_reacher import UR10ReacherDemo
+from typing import Optional
 
-    # Mappings from strings to environments
-    task_map = {
-        "AnymalTerrain": AnymalTerrainDemo,
-        "UR10Reacher": UR10ReacherDemo,
-    }
+from omni.isaac.core.articulations import ArticulationView
+from omni.isaac.core.prims import RigidPrimView
 
-    from omniisaacgymenvs.utils.config_utils.sim_config import SimConfig
-    sim_config = SimConfig(config)
+import torch
 
-    cfg = sim_config.config
-    task = task_map[cfg["task_name"]](
-        name=cfg["task_name"], sim_config=sim_config, env=env
-    )
+class UR10View(ArticulationView):
+    def __init__(
+        self,
+        prim_paths_expr: str,
+        name: Optional[str] = "UR10View",
+    ) -> None:
 
-    env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=init_sim)
+        super().__init__(
+            prim_paths_expr=prim_paths_expr,
+            name=name,
+            reset_xform_properties=False
+        )
 
-    return task
+        # Use RigidPrimView instead of XFormPrimView, since the XForm is not updated when running
+        self._end_effectors = RigidPrimView(prim_paths_expr="/World/envs/.*/ur10/ee_link", name="end_effector_view", reset_xform_properties=False)
+
+    def initialize(self, physics_sim_view):
+        super().initialize(physics_sim_view)

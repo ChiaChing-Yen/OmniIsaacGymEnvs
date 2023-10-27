@@ -27,24 +27,43 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-def initialize_demo(config, env, init_sim=True):
-    from omniisaacgymenvs.demos.anymal_terrain import AnymalTerrainDemo
-    from omniisaacgymenvs.demos.ur10_reacher import UR10ReacherDemo
+from typing import Optional
+import torch
+from omni.isaac.core.robots.robot import Robot
+from omni.isaac.core.utils.nucleus import get_assets_root_path
+from omni.isaac.core.utils.stage import add_reference_to_stage
 
-    # Mappings from strings to environments
-    task_map = {
-        "AnymalTerrain": AnymalTerrainDemo,
-        "UR10Reacher": UR10ReacherDemo,
-    }
+import carb
 
-    from omniisaacgymenvs.utils.config_utils.sim_config import SimConfig
-    sim_config = SimConfig(config)
+class UR10(Robot):
+    def __init__(
+        self,
+        prim_path: str,
+        name: Optional[str] = "UR10",
+        usd_path: Optional[str] = None,
+        translation: Optional[torch.tensor] = None,
+        orientation: Optional[torch.tensor] = None,
+    ) -> None:
 
-    cfg = sim_config.config
-    task = task_map[cfg["task_name"]](
-        name=cfg["task_name"], sim_config=sim_config, env=env
-    )
+        self._usd_path = usd_path
+        self._name = name
 
-    env.set_task(task=task, sim_params=sim_config.get_physics_params(), backend="torch", init_sim=init_sim)
+        if self._usd_path is None:
+            assets_root_path = get_assets_root_path()
+            if assets_root_path is None:
+                carb.log_error("Could not find Isaac Sim assets folder")
+            self._usd_path = "omniverse://localhost/Projects/J3soon/Isaac/2023.1.0/Isaac/Robots/UR10/ur10_instanceable.usd"
 
-    return task
+        # Depends on your real robot setup
+        self._position = torch.tensor([0.0, 0.0, 0.0]) if translation is None else translation
+        self._orientation = torch.tensor([1.0, 0.0, 0.0, 0.0]) if orientation is None else orientation
+
+        add_reference_to_stage(self._usd_path, prim_path)
+
+        super().__init__(
+            prim_path=prim_path,
+            name=name,
+            translation=self._position,
+            orientation=self._orientation,
+            articulation_controller=None,
+        )
